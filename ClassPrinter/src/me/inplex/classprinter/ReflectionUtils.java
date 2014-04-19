@@ -1,22 +1,34 @@
 package me.inplex.classprinter;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Modifier;
+import java.util.Arrays;
 import java.util.HashMap;
 
 public class ReflectionUtils {
-	
+
 	/**
 	 * Create a String from the given Object
+	 * 
 	 * @param o the object
 	 * @return the String created using the Object
 	 * @throws IllegalArgumentException
 	 * @throws IllegalAccessException
+	 * @throws IOException 
 	 */
-	
-	public static String toString(Object o) throws IllegalArgumentException, IllegalAccessException {
+
+	public static String toString(Object o) throws IllegalArgumentException, IllegalAccessException, IOException {
+		if(o instanceof Serializable) {
+			return toSerializedString((Serializable) o);
+		}
 		Class<?> c = o.getClass();
 		StringBuilder sb = new StringBuilder();
 		sb.append(c.getName());
@@ -43,9 +55,10 @@ public class ReflectionUtils {
 		sb.append("]");
 		return sb.toString();
 	}
-	
+
 	/**
 	 * Create an Object from the given String
+	 * 
 	 * @param s the String
 	 * @return the Object created using the String
 	 * @throws ClassNotFoundException
@@ -56,13 +69,17 @@ public class ReflectionUtils {
 	 * @throws IllegalArgumentException
 	 * @throws InvocationTargetException
 	 * @throws NoSuchMethodException
+	 * @throws IOException 
 	 */
 
 	public static Object fromString(String s) throws ClassNotFoundException, InstantiationException, IllegalAccessException, NoSuchFieldException,
-			SecurityException, IllegalArgumentException, InvocationTargetException, NoSuchMethodException {
+			SecurityException, IllegalArgumentException, InvocationTargetException, NoSuchMethodException, IOException {
 		Object o;
 		String className = s.split("\\[")[0];
 		Class<?> c = Class.forName(className);
+		if(c.isAssignableFrom(Serializable.class)) {
+			return fromSerializedString(s);
+		}
 		o = c.newInstance();
 		String fieldsString = s.replaceFirst(className + "\\[", "").replace("\\]", "");
 		if (fieldsString.endsWith("]")) {
@@ -90,6 +107,36 @@ public class ReflectionUtils {
 				f.setAccessible(true);
 			f.set(o, val);
 		}
+		return o;
+	}
+
+	public static String toSerializedString(Serializable s) throws IOException {
+		ByteArrayOutputStream baos = new ByteArrayOutputStream();
+		ObjectOutputStream oos = new ObjectOutputStream(baos);
+		oos.writeObject(s);
+		oos.flush();
+		oos.close();
+		byte[] data = baos.toByteArray();
+		return s.getClass().getName() + Arrays.toString(data).replaceAll(" ", "");
+	}
+	
+	public static Object fromSerializedString(String s) throws IOException, ClassNotFoundException {
+		String cName = s.split("\\[")[0];
+		String sRaw = s.replaceFirst(cName, "").replaceAll("\\[", "").replaceAll("\\]", "");
+		String[] splitted = sRaw.split(",");
+		ByteArrayOutputStream baos = new ByteArrayOutputStream();
+		for(int i = 0; i < splitted.length; i++) {
+			byte b = Byte.parseByte(splitted[i]);
+			baos.write(b);
+		}
+		baos.flush();
+		byte[] data = baos.toByteArray();
+		baos.close();
+		ByteArrayInputStream bais = new ByteArrayInputStream(data);
+		ObjectInputStream ois = new ObjectInputStream(bais);
+		Object o = ois.readObject();
+		bais.close();
+		ois.close();
 		return o;
 	}
 
